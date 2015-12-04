@@ -35,6 +35,7 @@ ID3D11DeviceContext* gDeviceContext = nullptr;
 ID3D11RenderTargetView* gBackbufferRTV = nullptr;
 
 ID3D11Buffer* gVertexBuffer = nullptr;
+ID3D11Buffer* gCBuffer[2];
 
 ID3D11InputLayout* gVertexLayout = nullptr;
 ID3D11VertexShader* gVertexShader = nullptr;
@@ -46,42 +47,15 @@ struct TriangleVertex
 	float r, g, b;
 };
 
-ID3D11Buffer* CreateConstantBuffer(UINT size, bool dynamic, bool CPUupdates, D3D11_SUBRESOURCE_DATA* pData)
+struct OFFSET
 {
-	D3D11_BUFFER_DESC desc;
-	desc.ByteWidth = size;
-	desc.MiscFlags = 0;
-	desc.StructureByteStride = 0;
-	desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	float x, y, z;
+};
 
-	if (dynamic && CPUupdates)
-	{
-		desc.Usage = D3D11_USAGE_DYNAMIC;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	}
-	else if (dynamic && !CPUupdates)
-	{
-		desc.Usage = D3D11_USAGE_DYNAMIC;
-		desc.CPUAccessFlags = 0;
-	}
-	else
-	{
-		desc.Usage = D3D11_USAGE_IMMUTABLE;
-		desc.CPUAccessFlags = 0;
-	}
-
-	ID3D11Buffer* pBuffer = nullptr;
-	HRESULT hr = gDevice->CreateBuffer(&desc, pData, &pBuffer);
-	
-	if (FAILED(hr))
-	{
-		// should be fixed to throw exception
-		return (0);
-	}
-
-	return pBuffer;
-
-}
+struct COLORMOD
+{
+	float test[3];
+};
 
 void SetViewPort()
 {
@@ -100,7 +74,7 @@ void SetViewPort()
 
 void CreateShaders()
 {
-	ID3DBlob* pVS = nullptr;
+	ID3DBlob* pVS = nullptr, *vError;
 	D3DCompileFromFile(
 		L"Vertex.hlsl", // filename
 		nullptr,		// optional macros
@@ -110,15 +84,18 @@ void CreateShaders()
 		0,				// shader compile options
 		0,				// effect compile options
 		&pVS,			// double pointer to ID3DBlob		
-		nullptr			// pointer for Error Blob messages.
+		&vError			// pointer for Error Blob messages.
 						// how to use the Error blob, see here
 						// https://msdn.microsoft.com/en-us/library/windows/desktop/hh968107(v=vs.85).aspx
 		);
 
+	if (vError)
+		MessageBox(NULL, L"The Vertex shader failed to compile.", L"Error", MB_OK);
+
 	gDevice->CreateVertexShader(pVS->GetBufferPointer(), pVS->GetBufferSize(), nullptr, &gVertexShader);
 	gDeviceContext->VSSetShader(gVertexShader, 0, 0);
 
-	ID3DBlob* pPS = nullptr;
+	ID3DBlob* pPS = nullptr, *pError;
 
 	D3DCompileFromFile(
 		L"Fragment.hlsl", // filename
@@ -129,8 +106,11 @@ void CreateShaders()
 		0,				// shader compile options
 		0,				// effect compile options
 		&pPS,			// double pointer to ID3DBlob		
-		nullptr			// pointer for Error Blob messages.
+		&pError		// pointer for Error Blob messages.
 		);
+
+	if(pError)
+		MessageBox(NULL, L"The Pixel shader failed to compile.", L"Error", MB_OK);
 
 	gDevice->CreatePixelShader(pPS->GetBufferPointer(), pPS->GetBufferSize(), nullptr, &gPixelShader);
 	gDeviceContext->PSSetShader(gPixelShader, 0, 0);
@@ -186,6 +166,18 @@ void CreateTriangleData()
 	memcpy(ms.pData, first_triangle, sizeof(first_triangle));
 	gDeviceContext->Unmap(gVertexBuffer, NULL);
 
+	D3D11_BUFFER_DESC cb_desc;
+	ZeroMemory(&cb_desc, sizeof(cb_desc));
+
+	cb_desc.Usage = D3D11_USAGE_DEFAULT;
+	cb_desc.ByteWidth = 256;
+	cb_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+	gDevice->CreateBuffer(&cb_desc, NULL, &gCBuffer[0]);
+	gDevice->CreateBuffer(&cb_desc, NULL, &gCBuffer[1]);
+
+
+	gDeviceContext->VSSetConstantBuffers(0, 2, gCBuffer);
 
 
 
@@ -194,6 +186,20 @@ void CreateTriangleData()
 void Render()
 {
 	float color[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
+
+	OFFSET Offset;
+	COLORMOD Color;
+
+	Offset.x = 0.5f;
+	Offset.y = 0.2f;
+	Offset.z = 0.7f;
+	
+	for (int i = 0; i < 3; i++)
+		Color.test[i] = 0.1f;
+
+	gDeviceContext->UpdateSubresource(gCBuffer[0], 0, 0, &Offset, 0, 0);
+	gDeviceContext->UpdateSubresource(gCBuffer[1], 0, 0, &Color, 0, 0);
+
 	gDeviceContext->ClearRenderTargetView(gBackbufferRTV, color);
 
 	// select which vertex buffer to display
