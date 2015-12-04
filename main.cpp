@@ -7,6 +7,7 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 
+
 #pragma comment (lib, "d3d11.lib")
 #pragma comment (lib, "d3dcompiler.lib")
 
@@ -44,6 +45,43 @@ struct TriangleVertex
 	float x, y, z;
 	float r, g, b;
 };
+
+ID3D11Buffer* CreateConstantBuffer(UINT size, bool dynamic, bool CPUupdates, D3D11_SUBRESOURCE_DATA* pData)
+{
+	D3D11_BUFFER_DESC desc;
+	desc.ByteWidth = size;
+	desc.MiscFlags = 0;
+	desc.StructureByteStride = 0;
+	desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+	if (dynamic && CPUupdates)
+	{
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	}
+	else if (dynamic && !CPUupdates)
+	{
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.CPUAccessFlags = 0;
+	}
+	else
+	{
+		desc.Usage = D3D11_USAGE_IMMUTABLE;
+		desc.CPUAccessFlags = 0;
+	}
+
+	ID3D11Buffer* pBuffer = nullptr;
+	HRESULT hr = gDevice->CreateBuffer(&desc, pData, &pBuffer);
+	
+	if (FAILED(hr))
+	{
+		// should be fixed to throw exception
+		return (0);
+	}
+
+	return pBuffer;
+
+}
 
 void SetViewPort()
 {
@@ -147,6 +185,10 @@ void CreateTriangleData()
 	gDeviceContext->Map(gVertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
 	memcpy(ms.pData, first_triangle, sizeof(first_triangle));
 	gDeviceContext->Unmap(gVertexBuffer, NULL);
+
+
+
+
 }
 
 void Render()
