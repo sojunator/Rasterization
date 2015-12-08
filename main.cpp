@@ -42,6 +42,7 @@ ID3D11DeviceContext* gDeviceContext = nullptr;
 ID3D11RenderTargetView* gBackbufferRTV = nullptr;
 
 ID3D11Buffer* gVertexBuffer = nullptr;
+ID3D11Buffer* indexbuffer = nullptr;
 ID3D11Buffer* gCBuffer;
 
 ID3D11InputLayout* gVertexLayout = nullptr;
@@ -149,19 +150,15 @@ void CreateTriangleData()
 
 	TriangleVertex Vertices[] =
 	{
-		-0.5f, 0.5f, 0.0f,	//v0 pos
-		1.0f, 0.0f, 0.0f,	//v0 color
-
-		0.5f, 0.5f, 0.0f,	//v1
-		0.0f, 1.0f, 0.0f,	//v1 color
-
-		-0.5f, -0.5f, 0.0f, //v2
-		0.0f, 0.0f, 1.0f,	//v2 color
-
-		0.5f, -0.5f, 0.0f,   //v3
-		0.7f, 0.4f, 0.3f,	//v2 color
+		{ -0.5f, 0.5f, -0.5f,  1.0f, 0.0f, 0.0f },   
+		{ 0.5f, 0.5f, -0.5f,   0.0f, 1.0f, 0.0f },    
+		{ -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f },  
+		{ 0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 1.0f },    
+		{ -0.5f, 0.5f, 0.5f,   0.0f, 1.0f, 1.0f },   
+		{ 0.5f, 0.5f, 0.5f,    1.0f, 0.0f, 1.0f },
+		{ -0.5f, -0.5f, 0.5f,  1.0f, 1.0f, 0.0f },
+		{ 0.5f, -0.5f, 0.5f,   1.0f, 1.0f, 1.0f },
 	};
-
 
 	D3D11_BUFFER_DESC bufferDesc;
 	ZeroMemory(&bufferDesc, sizeof(bufferDesc));
@@ -176,7 +173,6 @@ void CreateTriangleData()
 
 	vsrd = { Vertices, 0, 0 };
 
-
 	hr = gDevice->CreateBuffer(&bufferDesc, &vsrd, &gVertexBuffer);
 
 	if (FAILED(hr))
@@ -185,17 +181,14 @@ void CreateTriangleData()
 		hr = NULL;
 	}
 
+	D3D11_BUFFER_DESC cbdesc;
+	ZeroMemory(&cbdesc, sizeof(cbdesc));
 
-	D3D11_BUFFER_DESC cb_desc;
-	ZeroMemory(&cb_desc, sizeof(cb_desc));
+	cbdesc.Usage = D3D11_USAGE_DEFAULT;
+	cbdesc.ByteWidth = 64;
+	cbdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
-	cb_desc.Usage = D3D11_USAGE_DEFAULT;
-	cb_desc.ByteWidth = 64;
-	cb_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-
-
-	hr = gDevice->CreateBuffer(&cb_desc, NULL, &gCBuffer);
-
+	hr = gDevice->CreateBuffer(&cbdesc, NULL, &gCBuffer);
 
 	if (FAILED(hr))
 	{
@@ -205,6 +198,38 @@ void CreateTriangleData()
 	
 	gDeviceContext->VSSetConstantBuffers(0, 1, &gCBuffer);
 
+	unsigned int OurIndices[] =
+	{
+		0, 1, 2,    // side 1
+		2, 1, 3,
+		4, 0, 6,    // side 2
+		6, 0, 2,
+		7, 5, 6,    // side 3
+		6, 5, 4,
+		3, 1, 7,    // side 4
+		7, 1, 5,
+		4, 5, 0,    // side 5
+		0, 5, 1,
+		3, 7, 2,    // side 6
+		2, 7, 6,
+	};
+
+	D3D11_BUFFER_DESC ibd;
+	ibd.ByteWidth = sizeof(unsigned int) * ARRAYSIZE(OurIndices);
+	ibd.Usage = D3D11_USAGE_DEFAULT;
+	ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	ibd.CPUAccessFlags = 0;
+	ibd.MiscFlags = 0;
+
+	D3D11_SUBRESOURCE_DATA isrd = { OurIndices, 0, 0 };
+	hr = gDevice->CreateBuffer(&ibd, &isrd, &indexbuffer);
+
+
+	if (FAILED(hr))
+	{
+		MessageBox(NULL, L"Failed to create Indexbuffer.", L"Error", MB_OK);
+		hr = NULL;
+	}
 
 }
 
@@ -224,7 +249,6 @@ void Render()
 
 	float rads = ConvertToRadians(deltatime);
 
-
 	matRotateY = XMMatrixRotationY(rads);
 	projection = XMMatrixPerspectiveFovLH(PI*0.45f, 1.33f, 0.5f, 20.0f);
 	view = XMMatrixLookAtLH(cameraPosition, cameraTarget, cameraUpVector);
@@ -238,17 +262,17 @@ void Render()
 	// Clear the  backbuffer to a blue background
 	gDeviceContext->ClearRenderTargetView(gBackbufferRTV, color);
 
-
 	// select which vertex buffer to display
 	UINT stride = sizeof(TriangleVertex);
 	UINT offset = 0;
 	gDeviceContext->IASetVertexBuffers(0, 1, &gVertexBuffer, &stride, &offset);
+	gDeviceContext->IASetIndexBuffer(indexbuffer, DXGI_FORMAT_R32_UINT, 0);
 
 	// select which primtive type we are using D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
 	gDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
 	// draw the vertex buffer to the back buffer
-	gDeviceContext->Draw(4, 0);
+	gDeviceContext->DrawIndexed(36, 0, 0);
 
 	gSwapChain->Present(0, 0);
 }
@@ -386,7 +410,7 @@ HRESULT CreateDirect3DContext(HWND wndHandle)
 	hr = D3D11CreateDeviceAndSwapChain(NULL,
 		D3D_DRIVER_TYPE_HARDWARE, // Hardware
 		NULL,					  // Handle to software DLL if software driver has been choicen
-		NULL,					  // Device flags
+		D3D11_CREATE_DEVICE_DEBUG,					  // Device flags
 		NULL,					  // Feature levels
 		NULL,					  // Feature levels
 		D3D11_SDK_VERSION,		  //  SDK version

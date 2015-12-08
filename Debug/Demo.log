@@ -1,14 +1,15 @@
-﻿Build started 2015-12-08 21:03:15.
+﻿Build started 2015-12-08 21:47:14.
      1>Project "C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Demo.vcxproj" on node 2 (Build target(s)).
-     1>ClCompile:
-         C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\CL.exe /c /ZI /nologo /W3 /WX- /Od /Oy- /D WIN32 /D _DEBUG /D _WINDOWS /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\" /Fd"Debug\vc140.pdb" /Gd /TP /analyze- /errorReport:prompt main.cpp
-         main.cpp
-     1>c:\users\nollkoll\documents\visual studio 2015\projects\triangles\main.cpp(215): warning C4305: '+=': truncation from 'double' to 'float'
+     1>C:\Program Files (x86)\MSBuild\Microsoft.Cpp\v4.0\V140\Microsoft.CppBuild.targets(392,5): warning MSB8028: The intermediate directory (Debug\) contains files shared from another project (BasicWindow.vcxproj).  This can lead to incorrect clean and rebuild behavior.
+     1>FxCompile:
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe /nologo /E"main" /T fx_4_1 /Fo "C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Debug\Vertex.cso" /Od /Zi Vertex.hlsl 
+     1>FXC : warning X4717: Effects deprecated for D3DCompiler_47
+         
+         compilation object save succeeded; see C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Debug\Vertex.cso
        Link:
-         C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Debug\BasicWindow.exe" /INCREMENTAL /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /Debug /PDB:"C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Debug\BasicWindow.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Debug\BasicWindow.lib" /MACHINE:X86 Debug\main.obj
-         Demo.vcxproj -> C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Debug\BasicWindow.exe
+         Demo.vcxproj -> C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Debug\Rasteraztion.exe
      1>Done Building Project "C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Demo.vcxproj" (Build target(s)).
 
 Build succeeded.
 
-Time Elapsed 00:00:00.97
+Time Elapsed 00:00:00.04
