@@ -14,7 +14,7 @@
     <ProjectGuid>{9AFF6E4E-5D21-4DDE-948B-0E6BE0365098}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>RayCastLab</RootNamespace>
-    <ProjectName>BasicWindow</ProjectName>
+    <ProjectName>Rasteraztion</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -58,6 +58,12 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <FxCompile>
+      <ShaderType>Effect</ShaderType>
+    </FxCompile>
+    <FxCompile>
+      <ShaderModel>4.1</ShaderModel>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -77,7 +83,7 @@
     </Link>
     <FxCompile>
       <ShaderType>Effect</ShaderType>
-      <ShaderModel>5.0</ShaderModel>
+      <ShaderModel>4.1</ShaderModel>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>

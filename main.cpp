@@ -6,13 +6,14 @@
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
-
+#include "DirectXTK-nov2015\Inc\SimpleMath.h"
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment (lib, "d3dcompiler.lib")
 
-#define WIDTH 640;
-#define HEIGHT 480;
+#define WIDTH 640
+#define HEIGHT 480
+#define PI 3.14159265359f
 
 HWND InitWindow(HINSTANCE hInstance);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -28,6 +29,12 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 HRESULT CreateDirect3DContext(HWND wndHandle);
 
 
+// Name spaces
+using namespace DirectX;
+using namespace DirectX::SimpleMath;
+
+
+
 // DirectX attributes
 IDXGISwapChain* gSwapChain = nullptr;
 ID3D11Device* gDevice = nullptr;
@@ -35,11 +42,12 @@ ID3D11DeviceContext* gDeviceContext = nullptr;
 ID3D11RenderTargetView* gBackbufferRTV = nullptr;
 
 ID3D11Buffer* gVertexBuffer = nullptr;
-ID3D11Buffer* gCBuffer[2];
+ID3D11Buffer* gCBuffer;
 
 ID3D11InputLayout* gVertexLayout = nullptr;
 ID3D11VertexShader* gVertexShader = nullptr;
 ID3D11PixelShader* gPixelShader = nullptr;
+
 
 struct TriangleVertex
 {
@@ -54,8 +62,16 @@ struct OFFSET
 
 struct COLORMOD
 {
-	float test[3];
+	float test[4];
+	float test2[4];
+	float test3[4];
+	float test4[4];
 };
+
+float ConvertToRadians(float angle)
+{
+	return (PI / 180.0f) * angle;
+}
 
 void SetViewPort()
 {
@@ -129,25 +145,21 @@ void CreateShaders()
 
 void CreateTriangleData()
 {
+	HRESULT hr;
 
-
-	TriangleVertex first_triangle[5] =
+	TriangleVertex Vertices[] =
 	{
-		0.5f, 0.5f, 0.0f,	//v0 pos
+		-0.5f, 0.5f, 0.0f,	//v0 pos
 		1.0f, 0.0f, 0.0f,	//v0 color
 
-		0.5f, -0.5f, 0.0f,	//v1
+		0.5f, 0.5f, 0.0f,	//v1
 		0.0f, 1.0f, 0.0f,	//v1 color
 
 		-0.5f, -0.5f, 0.0f, //v2
 		0.0f, 0.0f, 1.0f,	//v2 color
 
-		-0.5f, 0.5f, 0.0f,   //v3
+		0.5f, -0.5f, 0.0f,   //v3
 		0.7f, 0.4f, 0.3f,	//v2 color
-
-		0.5f, 0.5f, 0.0f,	//v0 pos
-		1.0f, 0.0f, 0.0f,	//v0 color
-
 	};
 
 
@@ -155,30 +167,43 @@ void CreateTriangleData()
 	ZeroMemory(&bufferDesc, sizeof(bufferDesc));
 
 	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-	bufferDesc.ByteWidth = sizeof(TriangleVertex) * 5;
+	bufferDesc.ByteWidth = sizeof(TriangleVertex) * ARRAYSIZE(Vertices);
 	bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
-	gDevice->CreateBuffer(&bufferDesc, NULL, &gVertexBuffer);
+	D3D11_SUBRESOURCE_DATA vsrd;
+	ZeroMemory(&vsrd, sizeof(vsrd));
 
-	D3D11_MAPPED_SUBRESOURCE ms;
-	gDeviceContext->Map(gVertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
-	memcpy(ms.pData, first_triangle, sizeof(first_triangle));
-	gDeviceContext->Unmap(gVertexBuffer, NULL);
+	vsrd = { Vertices, 0, 0 };
+
+
+	hr = gDevice->CreateBuffer(&bufferDesc, &vsrd, &gVertexBuffer);
+
+	if (FAILED(hr))
+	{
+		MessageBox(NULL, L"Failed to create vertexbuffer.", L"Error", MB_OK);
+		hr = NULL;
+	}
+
 
 	D3D11_BUFFER_DESC cb_desc;
 	ZeroMemory(&cb_desc, sizeof(cb_desc));
 
 	cb_desc.Usage = D3D11_USAGE_DEFAULT;
-	cb_desc.ByteWidth = 256;
+	cb_desc.ByteWidth = 64;
 	cb_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
-	gDevice->CreateBuffer(&cb_desc, NULL, &gCBuffer[0]);
-	gDevice->CreateBuffer(&cb_desc, NULL, &gCBuffer[1]);
+
+	hr = gDevice->CreateBuffer(&cb_desc, NULL, &gCBuffer);
 
 
-	gDeviceContext->VSSetConstantBuffers(0, 2, gCBuffer);
-
+	if (FAILED(hr))
+	{
+		MessageBox(NULL, L"Failed to create constantbuffer.", L"Error", MB_OK);
+		hr = NULL;
+	}
+	
+	gDeviceContext->VSSetConstantBuffers(0, 1, &gCBuffer);
 
 
 }
@@ -186,21 +211,33 @@ void CreateTriangleData()
 void Render()
 {
 	float color[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
+	static float deltatime = 0.0;
+	deltatime += 0.01;
 
-	OFFSET Offset;
-	COLORMOD Color;
+	Matrix matRotateY;
+	Matrix projection;
+	Matrix view;
 
-	Offset.x = 0.5f;
-	Offset.y = 0.2f;
-	Offset.z = 0.7f;
-	
-	for (int i = 0; i < 3; i++)
-		Color.test[i] = 0.1f;
+	Vector3 cameraPosition(0, 0, -2);
+	Vector3 cameraTarget(0, 0, 0);
+	Vector3 cameraUpVector(0, 1, 0);
 
-	gDeviceContext->UpdateSubresource(gCBuffer[0], 0, 0, &Offset, 0, 0);
-	gDeviceContext->UpdateSubresource(gCBuffer[1], 0, 0, &Color, 0, 0);
+	float rads = ConvertToRadians(deltatime);
 
+
+	matRotateY = XMMatrixRotationY(rads);
+	projection = XMMatrixPerspectiveFovLH(PI*0.45f, 1.33f, 0.5f, 20.0f);
+	view = XMMatrixLookAtLH(cameraPosition, cameraTarget, cameraUpVector);
+
+	Matrix finalMatrix = matRotateY * view * projection;
+	 
+	finalMatrix = XMMatrixTranspose(finalMatrix);
+
+	gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &finalMatrix, 0, 0);
+
+	// Clear the  backbuffer to a blue background
 	gDeviceContext->ClearRenderTargetView(gBackbufferRTV, color);
+
 
 	// select which vertex buffer to display
 	UINT stride = sizeof(TriangleVertex);
@@ -211,7 +248,7 @@ void Render()
 	gDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
 	// draw the vertex buffer to the back buffer
-	gDeviceContext->Draw(5, 0);
+	gDeviceContext->Draw(4, 0);
 
 	gSwapChain->Present(0, 0);
 }
@@ -374,4 +411,3 @@ HRESULT CreateDirect3DContext(HWND wndHandle)
 
 	return hr;
 }
-

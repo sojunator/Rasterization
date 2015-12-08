@@ -1,13 +1,6 @@
-cbuffer ConstantBuffer : register(b0)
+cbuffer ConstantBuffer 
 {
-	float3 Offset;
-
-
-};
-cbuffer ConstantBuffer : register(b1)
-{
-	float3 Color;
-
+	matrix finalMatrix;
 };
 
 
@@ -30,12 +23,15 @@ VS_OUT VS_main(VS_IN input)
 {
 	VS_OUT output = (VS_OUT)0;
 
-	output.Pos = float4(input.Pos, 1.0f);
-	output.Pos.x += Offset.x;
-	output.Pos.y += Offset.y;
-	output.Pos.xy *= Offset.z;
+	float4 pos = float4(input.Pos, 1);
+
+	output.Pos = mul(pos, finalMatrix);
 
 	output.Color = input.Color;
-	output.Color *= Color;
+
+	output.Color.r = finalMatrix._11;
+
+
+
 	return output;
 }
