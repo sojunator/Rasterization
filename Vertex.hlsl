@@ -29,9 +29,5 @@ VS_OUT VS_main(VS_IN input)
 
 	output.Color = input.Color;
 
-	output.Color.r = finalMatrix._11;
-
-
-
 	return output;
 }

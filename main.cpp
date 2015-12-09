@@ -14,6 +14,7 @@
 #define WIDTH 640
 #define HEIGHT 480
 #define PI 3.14159265359f
+#define WM_KEYDOWN                      0x0100
 
 HWND InitWindow(HINSTANCE hInstance);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -28,12 +29,9 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 // Prototypes
 HRESULT CreateDirect3DContext(HWND wndHandle);
 
-
 // Name spaces
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
-
-
 
 // DirectX attributes
 IDXGISwapChain* gSwapChain = nullptr;
@@ -43,12 +41,12 @@ ID3D11RenderTargetView* gBackbufferRTV = nullptr;
 
 ID3D11Buffer* gVertexBuffer = nullptr;
 ID3D11Buffer* indexbuffer = nullptr;
-ID3D11Buffer* gCBuffer;
+ID3D11Buffer* gCBuffer = nullptr;
+ID3D11DepthStencilView* gZBuffer = nullptr;
 
 ID3D11InputLayout* gVertexLayout = nullptr;
 ID3D11VertexShader* gVertexShader = nullptr;
 ID3D11PixelShader* gPixelShader = nullptr;
-
 
 struct TriangleVertex
 {
@@ -74,8 +72,30 @@ float ConvertToRadians(float angle)
 	return (PI / 180.0f) * angle;
 }
 
-void SetViewPort()
+void SetViewPortAndDepthBuffer()
 {
+	// Create Z-buffer
+	D3D11_TEXTURE2D_DESC texzb;
+	ZeroMemory(&texzb, sizeof(texzb));
+
+	texzb.Width = WIDTH;
+	texzb.Height = HEIGHT;
+	texzb.MipLevels = 1;
+	texzb.ArraySize = 1;
+	texzb.SampleDesc.Count = 1;
+	texzb.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	texzb.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+
+	ID3D11Texture2D* zbufferTexture;
+	gDevice->CreateTexture2D(&texzb, NULL, &zbufferTexture);
+
+	D3D11_DEPTH_STENCIL_VIEW_DESC dsvd;
+	ZeroMemory(&dsvd, sizeof(dsvd));
+
+	dsvd.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+
+	gDevice->CreateDepthStencilView(zbufferTexture, &dsvd, &gZBuffer);
+
 	D3D11_VIEWPORT viewport;
 	ZeroMemory(&viewport, sizeof(D3D11_VIEWPORT));
 
@@ -237,30 +257,29 @@ void Render()
 {
 	float color[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	static float deltatime = 0.0;
-	deltatime += 0.01;
 
 	Matrix matRotateY;
+	Matrix matRotateZ;
 	Matrix projection;
 	Matrix view;
+	Matrix finalMatrix;
 
-	Vector3 cameraPosition(0, 0, -2);
+	Vector3 cameraPosition(0, 0, -2); 
 	Vector3 cameraTarget(0, 0, 0);
 	Vector3 cameraUpVector(0, 1, 0);
 
+	deltatime += 0.01;
+
 	float rads = ConvertToRadians(deltatime);
-
-	matRotateY = XMMatrixRotationY(rads);
-	projection = XMMatrixPerspectiveFovLH(PI*0.45f, 1.33f, 0.5f, 20.0f);
-	view = XMMatrixLookAtLH(cameraPosition, cameraTarget, cameraUpVector);
-
-	Matrix finalMatrix = matRotateY * view * projection;
-	 
-	finalMatrix = XMMatrixTranspose(finalMatrix);
-
-	gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &finalMatrix, 0, 0);
 
 	// Clear the  backbuffer to a blue background
 	gDeviceContext->ClearRenderTargetView(gBackbufferRTV, color);
+
+	// Clear the zbuffer
+	gDeviceContext->ClearDepthStencilView(gZBuffer, D3D11_CLEAR_DEPTH, 1.0f, 0);
+
+	// select which primtive type we are using D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+	gDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// select which vertex buffer to display
 	UINT stride = sizeof(TriangleVertex);
@@ -268,12 +287,39 @@ void Render()
 	gDeviceContext->IASetVertexBuffers(0, 1, &gVertexBuffer, &stride, &offset);
 	gDeviceContext->IASetIndexBuffer(indexbuffer, DXGI_FORMAT_R32_UINT, 0);
 
-	// select which primtive type we are using D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
-	gDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
+	// Create world matrix, projection and view / camera for the first cube
+	matRotateY = XMMatrixRotationY(rads);
+	matRotateZ = XMMatrixRotationZ(rads);
+	projection = XMMatrixPerspectiveFovLH(PI*0.45f, 1.33f, 0.5f, 20.0f);
+	view = XMMatrixLookAtLH(cameraPosition, cameraTarget, cameraUpVector);
+
+    finalMatrix =  matRotateZ * matRotateY * view * projection;
+	
+	// Transpose to get to RH
+	finalMatrix = XMMatrixTranspose(finalMatrix);
+
+	// Update constant buffer with the new matrix
+	gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &finalMatrix, 0, 0);
+
 
 	// draw the vertex buffer to the back buffer
-	gDeviceContext->DrawIndexed(36, 0, 0);
+	gDeviceContext->DrawIndexed(36, 0, 0); // Draw cube one
 
+	XMMATRIX mTranslate = XMMatrixTranslation(-2.0f, 0.0, -6.0f);
+
+	finalMatrix = matRotateZ * mTranslate * matRotateY * view * projection;
+
+	// Transpose to get to RH
+	finalMatrix = XMMatrixTranspose(finalMatrix);
+
+	// Update constant buffer with the new matrix
+	gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &finalMatrix, 0, 0);
+
+	// draw the vertex buffer to the back buffer
+	gDeviceContext->DrawIndexed(36, 0, 0); // Draw cube two
+
+	// Swap the buffers
 	gSwapChain->Present(0, 0);
 }
 
@@ -304,7 +350,7 @@ int WINAPI wWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdL
 		CreateDirect3DContext(wndHandle);
 
 		// Create and set viewport
-		SetViewPort(); 
+		SetViewPortAndDepthBuffer();
 
 		//
 		CreateShaders();
@@ -381,7 +427,19 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
 	{
 	case WM_DESTROY:
 		PostQuitMessage(0);
-		break;		
+		break;	
+
+	case WM_KEYDOWN:
+
+		switch (wParam)
+		{
+		case VK_ESCAPE:
+			PostQuitMessage(0);
+			break;
+		case 0x41: // A KEY
+			break;
+		}
+		break;
 	}
 
 	// if we do not handle the message here, simply call the Default handler function
@@ -429,7 +487,7 @@ HRESULT CreateDirect3DContext(HWND wndHandle)
 		gDevice->CreateRenderTargetView(pBackBuffer, NULL, &gBackbufferRTV);
 		pBackBuffer->Release();
 
-		gDeviceContext->OMSetRenderTargets(1, &gBackbufferRTV, NULL);
+		gDeviceContext->OMSetRenderTargets(1, &gBackbufferRTV, gZBuffer);
 
 	}
 
