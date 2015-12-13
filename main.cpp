@@ -11,8 +11,8 @@
 #pragma comment (lib, "d3d11.lib")
 #pragma comment (lib, "d3dcompiler.lib")
 
-#define WIDTH 640
-#define HEIGHT 480
+#define WIDTH 640.0f
+#define HEIGHT 480.0f
 #define PI 3.14159265359f
 #define WM_KEYDOWN                      0x0100
 
@@ -38,15 +38,19 @@ IDXGISwapChain* gSwapChain = nullptr;
 ID3D11Device* gDevice = nullptr;
 ID3D11DeviceContext* gDeviceContext = nullptr;
 ID3D11RenderTargetView* gBackbufferRTV = nullptr;
+ID3D11DepthStencilView* gZBuffer = nullptr;
+
+ID3D11Texture2D* depthStencilBuffer;
 
 ID3D11Buffer* gVertexBuffer = nullptr;
 ID3D11Buffer* indexbuffer = nullptr;
 ID3D11Buffer* gCBuffer = nullptr;
-ID3D11DepthStencilView* gZBuffer = nullptr;
+ID3D11Buffer* gGeometryBuffer = nullptr;
 
 ID3D11InputLayout* gVertexLayout = nullptr;
 ID3D11VertexShader* gVertexShader = nullptr;
 ID3D11PixelShader* gPixelShader = nullptr;
+ID3D11GeometryShader* gGeometryShader = nullptr;
 
 struct TriangleVertex
 {
@@ -74,6 +78,7 @@ float ConvertToRadians(float angle)
 
 void SetViewPortAndDepthBuffer()
 {
+	HRESULT hr;
 	// Create Z-buffer
 	D3D11_TEXTURE2D_DESC texzb;
 	ZeroMemory(&texzb, sizeof(texzb));
@@ -85,16 +90,26 @@ void SetViewPortAndDepthBuffer()
 	texzb.SampleDesc.Count = 1;
 	texzb.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	texzb.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	texzb.Usage = D3D11_USAGE_DEFAULT;
+	texzb.CPUAccessFlags = 0;
+	texzb.MiscFlags = 0;
 
-	ID3D11Texture2D* zbufferTexture;
-	gDevice->CreateTexture2D(&texzb, NULL, &zbufferTexture);
+	hr = gDevice->CreateTexture2D(&texzb, NULL, &depthStencilBuffer);
+
+	if (FAILED(hr))
+		MessageBox(NULL, L"Failed to create depthbuffer.", L"Error", MB_OK);
 
 	D3D11_DEPTH_STENCIL_VIEW_DESC dsvd;
 	ZeroMemory(&dsvd, sizeof(dsvd));
 
 	dsvd.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 
-	gDevice->CreateDepthStencilView(zbufferTexture, &dsvd, &gZBuffer);
+	hr = gDevice->CreateDepthStencilView(depthStencilBuffer, &dsvd, &gZBuffer);
+	if (FAILED(hr))
+		MessageBox(NULL, L"Failed to create depthstencil.", L"Error", MB_OK);
+
+
+	gDeviceContext->OMSetRenderTargets(1, &gBackbufferRTV, gZBuffer);
 
 	D3D11_VIEWPORT viewport;
 	ZeroMemory(&viewport, sizeof(D3D11_VIEWPORT));
@@ -112,6 +127,7 @@ void SetViewPortAndDepthBuffer()
 void CreateShaders()
 {
 	ID3DBlob* pVS = nullptr, *vError;
+
 	D3DCompileFromFile(
 		L"Vertex.hlsl", // filename
 		nullptr,		// optional macros
@@ -152,6 +168,26 @@ void CreateShaders()
 	gDevice->CreatePixelShader(pPS->GetBufferPointer(), pPS->GetBufferSize(), nullptr, &gPixelShader);
 	gDeviceContext->PSSetShader(gPixelShader, 0, 0);
 
+	ID3DBlob* pGS = nullptr, *gError;
+
+	D3DCompileFromFile(
+		L"GeometryShader.hlsl", // filename
+		nullptr,		// optional macros
+		nullptr,		// optional include files
+		"GS_main",		// entry point
+		"gs_4_0",		// shader model (target)
+		0,				// shader compile options
+		0,				// effect compile options
+		&pGS,			// double pointer to ID3DBlob		
+		&gError		// pointer for Error Blob messages.
+		);
+
+	if (gError)
+		MessageBox(NULL, L"The geometry shader failed to compile.", L"Error", MB_OK);
+
+	gDevice->CreateGeometryShader(pGS->GetBufferPointer(), pGS->GetBufferSize(), nullptr, &gGeometryShader);
+	gDeviceContext->GSSetShader(gGeometryShader, 0, 0);
+
 	// Input layout object
 	D3D11_INPUT_ELEMENT_DESC ied[] =
 	{ 
@@ -173,11 +209,11 @@ void CreateTriangleData()
 		{ -0.5f, 0.5f, -0.5f,  1.0f, 0.0f, 0.0f },   
 		{ 0.5f, 0.5f, -0.5f,   0.0f, 1.0f, 0.0f },    
 		{ -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f },  
-		{ 0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 1.0f },    
-		{ -0.5f, 0.5f, 0.5f,   0.0f, 1.0f, 1.0f },   
-		{ 0.5f, 0.5f, 0.5f,    1.0f, 0.0f, 1.0f },
-		{ -0.5f, -0.5f, 0.5f,  1.0f, 1.0f, 0.0f },
-		{ 0.5f, -0.5f, 0.5f,   1.0f, 1.0f, 1.0f },
+		{ 0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 1.0f }    
+		//{ -0.5f, 0.5f, 0.5f,   0.0f, 1.0f, 1.0f },   
+		//{ 0.5f, 0.5f, 0.5f,    1.0f, 0.0f, 1.0f },
+		//{ -0.5f, -0.5f, 0.5f,  1.0f, 1.0f, 0.0f },
+		//{ 0.5f, -0.5f, 0.5f,   1.0f, 1.0f, 1.0f },
 	};
 
 	D3D11_BUFFER_DESC bufferDesc;
@@ -216,33 +252,33 @@ void CreateTriangleData()
 		hr = NULL;
 	}
 	
-	gDeviceContext->VSSetConstantBuffers(0, 1, &gCBuffer);
+	gDeviceContext->GSSetConstantBuffers(0, 1, &gCBuffer);
 
-	unsigned int OurIndices[] =
-	{
-		0, 1, 2,    // side 1
-		2, 1, 3,
-		4, 0, 6,    // side 2
-		6, 0, 2,
-		7, 5, 6,    // side 3
-		6, 5, 4,
-		3, 1, 7,    // side 4
-		7, 1, 5,
-		4, 5, 0,    // side 5
-		0, 5, 1,
-		3, 7, 2,    // side 6
-		2, 7, 6,
-	};
+	//unsigned int OurIndices[] =
+	//{
+	//	0, 1, 2,    // side 1
+	//	2, 1, 3,
+	//	4, 0, 6,    // side 2
+	//	6, 0, 2,
+	//	7, 5, 6,    // side 3
+	//	6, 5, 4,
+	//	3, 1, 7,    // side 4
+	//	7, 1, 5,
+	//	4, 5, 0,    // side 5
+	//	0, 5, 1,
+	//	3, 7, 2,    // side 6
+	//	2, 7, 6,
+	//};
 
-	D3D11_BUFFER_DESC ibd;
-	ibd.ByteWidth = sizeof(unsigned int) * ARRAYSIZE(OurIndices);
-	ibd.Usage = D3D11_USAGE_DEFAULT;
-	ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	ibd.CPUAccessFlags = 0;
-	ibd.MiscFlags = 0;
+	//D3D11_BUFFER_DESC ibd;
+	//ibd.ByteWidth = sizeof(unsigned int) * ARRAYSIZE(OurIndices);
+	//ibd.Usage = D3D11_USAGE_DEFAULT;
+	//ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	//ibd.CPUAccessFlags = 0;
+	//ibd.MiscFlags = 0;
 
-	D3D11_SUBRESOURCE_DATA isrd = { OurIndices, 0, 0 };
-	hr = gDevice->CreateBuffer(&ibd, &isrd, &indexbuffer);
+	//D3D11_SUBRESOURCE_DATA isrd = { OurIndices, 0, 0 };
+	//hr = gDevice->CreateBuffer(&ibd, &isrd, &indexbuffer);
 
 
 	if (FAILED(hr))
@@ -256,7 +292,7 @@ void CreateTriangleData()
 void Render()
 {
 	float color[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
-	static float deltatime = 0.0;
+	static float deltatime;
 
 	Matrix matRotateY;
 	Matrix matRotateZ;
@@ -276,25 +312,25 @@ void Render()
 	gDeviceContext->ClearRenderTargetView(gBackbufferRTV, color);
 
 	// Clear the zbuffer
-	gDeviceContext->ClearDepthStencilView(gZBuffer, D3D11_CLEAR_DEPTH, 1.0f, 0);
+	gDeviceContext->ClearDepthStencilView(gZBuffer, D3D11_CLEAR_DEPTH|D3D11_CLEAR_STENCIL, 1.0f, 0);
 
 	// select which primtive type we are using D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
-	gDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	gDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
 	// select which vertex buffer to display
 	UINT stride = sizeof(TriangleVertex);
 	UINT offset = 0;
 	gDeviceContext->IASetVertexBuffers(0, 1, &gVertexBuffer, &stride, &offset);
-	gDeviceContext->IASetIndexBuffer(indexbuffer, DXGI_FORMAT_R32_UINT, 0);
+	//gDeviceContext->IASetIndexBuffer(indexbuffer, DXGI_FORMAT_R32_UINT, 0);
 
 
 	// Create world matrix, projection and view / camera for the first cube
 	matRotateY = XMMatrixRotationY(rads);
-	matRotateZ = XMMatrixRotationZ(rads);
+	/*matRotateZ = XMMatrixRotationZ(rads);*/
 	projection = XMMatrixPerspectiveFovLH(PI*0.45f, 1.33f, 0.5f, 20.0f);
 	view = XMMatrixLookAtLH(cameraPosition, cameraTarget, cameraUpVector);
 
-    finalMatrix =  matRotateZ * matRotateY * view * projection;
+    finalMatrix =  matRotateY * view * projection;
 	
 	// Transpose to get to RH
 	finalMatrix = XMMatrixTranspose(finalMatrix);
@@ -304,20 +340,20 @@ void Render()
 
 
 	// draw the vertex buffer to the back buffer
-	gDeviceContext->DrawIndexed(36, 0, 0); // Draw cube one
+	gDeviceContext->Draw(4, 0); // Draw cube one
 
-	XMMATRIX mTranslate = XMMatrixTranslation(-2.0f, 0.0, -6.0f);
+	//XMMATRIX mTranslate = XMMatrixTranslation(-2.0f, 0.0, -6.0f);
 
-	finalMatrix = matRotateZ * mTranslate * matRotateY * view * projection;
+	//finalMatrix = matRotateZ * mTranslate * matRotateY * view * projection;
 
-	// Transpose to get to RH
-	finalMatrix = XMMatrixTranspose(finalMatrix);
+	//// Transpose to get to RH
+	//finalMatrix = XMMatrixTranspose(finalMatrix);
 
-	// Update constant buffer with the new matrix
-	gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &finalMatrix, 0, 0);
+	//// Update constant buffer with the new matrix
+	//gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &finalMatrix, 0, 0);
 
-	// draw the vertex buffer to the back buffer
-	gDeviceContext->DrawIndexed(36, 0, 0); // Draw cube two
+	//// draw the vertex buffer to the back buffer
+	//gDeviceContext->DrawIndexed(36, 0, 0); // Draw cube two
 
 	// Swap the buffers
 	gSwapChain->Present(0, 0);
@@ -330,6 +366,8 @@ void CleanD3D()
 	gDevice->Release();
 	gDeviceContext->Release();
 	gPixelShader->Release();
+	gCBuffer->Release();
+	depthStencilBuffer->Release();
 	gVertexBuffer->Release();
 }
 
@@ -459,7 +497,7 @@ HRESULT CreateDirect3DContext(HWND wndHandle)
 	sd.BufferDesc.RefreshRate.Denominator = 1;
 	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	sd.OutputWindow = wndHandle;
-	sd.SampleDesc.Count = 4;
+	sd.SampleDesc.Count = 1;
 	sd.SampleDesc.Quality = 0;
 	sd.Windowed = TRUE;
 
@@ -487,7 +525,9 @@ HRESULT CreateDirect3DContext(HWND wndHandle)
 		gDevice->CreateRenderTargetView(pBackBuffer, NULL, &gBackbufferRTV);
 		pBackBuffer->Release();
 
-		gDeviceContext->OMSetRenderTargets(1, &gBackbufferRTV, gZBuffer);
+		gDeviceContext->OMSetRenderTargets(1, &gBackbufferRTV, NULL);
+
+
 
 	}
 
