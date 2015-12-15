@@ -7,6 +7,7 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include "DirectXTK-nov2015\Inc\SimpleMath.h"
+#include "bth_image.h"
 
 #pragma comment (lib, "d3d11.lib")
 #pragma comment (lib, "d3dcompiler.lib")
@@ -39,12 +40,14 @@ ID3D11Device* gDevice = nullptr;
 ID3D11DeviceContext* gDeviceContext = nullptr;
 ID3D11RenderTargetView* gBackbufferRTV = nullptr;
 ID3D11DepthStencilView* gZBuffer = nullptr;
+ID3D11ShaderResourceView* gTextureView = nullptr;
 
 ID3D11Texture2D* depthStencilBuffer;
 
 ID3D11Buffer* gVertexBuffer = nullptr;
 ID3D11Buffer* indexbuffer = nullptr;
 ID3D11Buffer* gCBuffer = nullptr;
+ID3D11Buffer* vCBuffer = nullptr;
 ID3D11Buffer* gGeometryBuffer = nullptr;
 
 ID3D11InputLayout* gVertexLayout = nullptr;
@@ -55,20 +58,16 @@ ID3D11GeometryShader* gGeometryShader = nullptr;
 struct TriangleVertex
 {
 	float x, y, z;
-	float r, g, b;
+	float u, v;
 };
 
-struct OFFSET
+struct constantbuffer
 {
-	float x, y, z;
-};
-
-struct COLORMOD
-{
-	float test[4];
-	float test2[4];
-	float test3[4];
-	float test4[4];
+	XMMATRIX Final; // 4x4x4 = 64
+	XMMATRIX World; // 4x4x4 = 64
+	XMVECTOR DiffuseVector; // 3x4 = 12
+	XMVECTOR DiffuseColor; // 3x4  = 12
+	XMVECTOR AmbientColor; // 3x4 = 12, tot = 100 bytes
 };
 
 float ConvertToRadians(float angle)
@@ -191,8 +190,8 @@ void CreateShaders()
 	// Input layout object
 	D3D11_INPUT_ELEMENT_DESC ied[] =
 	{ 
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
 	gDevice->CreateInputLayout(ied, ARRAYSIZE(ied), pVS->GetBufferPointer(), pVS->GetBufferSize(), &gVertexLayout);
@@ -206,14 +205,10 @@ void CreateTriangleData()
 
 	TriangleVertex Vertices[] =
 	{
-		{ -0.5f, 0.5f, -0.5f,  1.0f, 0.0f, 0.0f },   
-		{ 0.5f, 0.5f, -0.5f,   0.0f, 1.0f, 0.0f },    
-		{ -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f },  
-		{ 0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 1.0f }    
-		//{ -0.5f, 0.5f, 0.5f,   0.0f, 1.0f, 1.0f },   
-		//{ 0.5f, 0.5f, 0.5f,    1.0f, 0.0f, 1.0f },
-		//{ -0.5f, -0.5f, 0.5f,  1.0f, 1.0f, 0.0f },
-		//{ 0.5f, -0.5f, 0.5f,   1.0f, 1.0f, 1.0f },
+		{ -0.5f, 0.5f, -0.5f,  0.0f, 0.0f},   
+		{ 0.5f, 0.5f, -0.5f,   1.0f, 0.0f},    
+		{ -0.5f, -0.5f, -0.5f, 0.0f, 1.0f},  
+		{ 0.5f, -0.5f, -0.5f,  1.0f, 1.0f}    
 	};
 
 	D3D11_BUFFER_DESC bufferDesc;
@@ -232,66 +227,64 @@ void CreateTriangleData()
 	hr = gDevice->CreateBuffer(&bufferDesc, &vsrd, &gVertexBuffer);
 
 	if (FAILED(hr))
-	{
 		MessageBox(NULL, L"Failed to create vertexbuffer.", L"Error", MB_OK);
-		hr = NULL;
-	}
+
 
 	D3D11_BUFFER_DESC cbdesc;
 	ZeroMemory(&cbdesc, sizeof(cbdesc));
 
 	cbdesc.Usage = D3D11_USAGE_DEFAULT;
-	cbdesc.ByteWidth = 64;
+	cbdesc.ByteWidth = 176;
 	cbdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
 	hr = gDevice->CreateBuffer(&cbdesc, NULL, &gCBuffer);
 
 	if (FAILED(hr))
-	{
 		MessageBox(NULL, L"Failed to create constantbuffer.", L"Error", MB_OK);
-		hr = NULL;
-	}
+
 	
 	gDeviceContext->GSSetConstantBuffers(0, 1, &gCBuffer);
 
-	//unsigned int OurIndices[] =
-	//{
-	//	0, 1, 2,    // side 1
-	//	2, 1, 3,
-	//	4, 0, 6,    // side 2
-	//	6, 0, 2,
-	//	7, 5, 6,    // side 3
-	//	6, 5, 4,
-	//	3, 1, 7,    // side 4
-	//	7, 1, 5,
-	//	4, 5, 0,    // side 5
-	//	0, 5, 1,
-	//	3, 7, 2,    // side 6
-	//	2, 7, 6,
-	//};
+	// Create bth texture
+	D3D11_TEXTURE2D_DESC bthTexDesc;
+	ZeroMemory(&bthTexDesc, sizeof(bthTexDesc));
+	bthTexDesc.Height = BTH_IMAGE_HEIGHT;
+	bthTexDesc.Width = BTH_IMAGE_WIDTH;
+	bthTexDesc.SampleDesc.Count = 1;
+	bthTexDesc.SampleDesc.Quality = 0;
+	bthTexDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	bthTexDesc.MipLevels = bthTexDesc.ArraySize = 1;
+	bthTexDesc.Usage = D3D11_USAGE_DEFAULT;
+	bthTexDesc.CPUAccessFlags = 0;
+	bthTexDesc.MiscFlags = 0;
+	bthTexDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-	//D3D11_BUFFER_DESC ibd;
-	//ibd.ByteWidth = sizeof(unsigned int) * ARRAYSIZE(OurIndices);
-	//ibd.Usage = D3D11_USAGE_DEFAULT;
-	//ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	//ibd.CPUAccessFlags = 0;
-	//ibd.MiscFlags = 0;
-
-	//D3D11_SUBRESOURCE_DATA isrd = { OurIndices, 0, 0 };
-	//hr = gDevice->CreateBuffer(&ibd, &isrd, &indexbuffer);
-
-
+	ID3D11Texture2D* pTexture = NULL;
+	D3D11_SUBRESOURCE_DATA data;
+	ZeroMemory(&data, sizeof(data));
+	data.pSysMem = (void*)BTH_IMAGE_DATA;
+	data.SysMemPitch = BTH_IMAGE_WIDTH * 4 * sizeof(char);
+	hr = gDevice->CreateTexture2D(&bthTexDesc, &data, &pTexture);
 	if (FAILED(hr))
-	{
-		MessageBox(NULL, L"Failed to create Indexbuffer.", L"Error", MB_OK);
-		hr = NULL;
-	}
+		MessageBox(NULL, L"Failed to create texture2D", L"Error", MB_OK);
 
+	D3D11_SHADER_RESOURCE_VIEW_DESC resViewDesc;
+	ZeroMemory(&resViewDesc, sizeof(resViewDesc));
+	resViewDesc.Format = bthTexDesc.Format;
+	resViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	resViewDesc.Texture2D.MipLevels = bthTexDesc.MipLevels;
+	resViewDesc.Texture2D.MostDetailedMip = 0;
+	hr = gDevice->CreateShaderResourceView(pTexture, &resViewDesc, &gTextureView);
+	if (FAILED(hr))
+		MessageBox(NULL, L"Failed to create resource view", L"Error", MB_OK);
+	pTexture->Release();
 }
 
 void Render()
 {
-	float color[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
+
+
+	float color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	static float deltatime;
 
 	Matrix matRotateY;
@@ -304,9 +297,33 @@ void Render()
 	Vector3 cameraTarget(0, 0, 0);
 	Vector3 cameraUpVector(0, 1, 0);
 
-	deltatime += 0.01;
+	deltatime += 0.01f;
 
 	float rads = ConvertToRadians(deltatime);
+
+	// Create world matrix, projection and view / camera for the first cube
+	matRotateY = XMMatrixRotationY(rads);
+	/*matRotateZ = XMMatrixRotationZ(rads);*/
+	projection = XMMatrixPerspectiveFovLH(PI*0.45f, 1.33f, 0.5f, 20.0f);
+	view = XMMatrixLookAtLH(cameraPosition, cameraTarget, cameraUpVector);
+
+	finalMatrix = matRotateY * view * projection;
+
+	// Transpose to get to RH
+	finalMatrix = XMMatrixTranspose(finalMatrix);
+
+	// Create matrices for lights
+	constantbuffer gConstantBuffer;
+	gConstantBuffer.DiffuseVector = XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
+	gConstantBuffer.DiffuseColor = XMVectorSet(0.5f, 0.5f, 0.5f, 1.0f);
+	gConstantBuffer.AmbientColor = XMVectorSet(0.2f, 0.2f, 0.2f, 1.0f);
+	gConstantBuffer.World = matRotateY;
+	gConstantBuffer.Final = finalMatrix;
+
+	// Update constant buffer with the new matrix
+	gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &gConstantBuffer, 0, 0);
+
+
 
 	// Clear the  backbuffer to a blue background
 	gDeviceContext->ClearRenderTargetView(gBackbufferRTV, color);
@@ -321,39 +338,11 @@ void Render()
 	UINT stride = sizeof(TriangleVertex);
 	UINT offset = 0;
 	gDeviceContext->IASetVertexBuffers(0, 1, &gVertexBuffer, &stride, &offset);
+	gDeviceContext->PSSetShaderResources(0, 1, &gTextureView);
 	//gDeviceContext->IASetIndexBuffer(indexbuffer, DXGI_FORMAT_R32_UINT, 0);
-
-
-	// Create world matrix, projection and view / camera for the first cube
-	matRotateY = XMMatrixRotationY(rads);
-	/*matRotateZ = XMMatrixRotationZ(rads);*/
-	projection = XMMatrixPerspectiveFovLH(PI*0.45f, 1.33f, 0.5f, 20.0f);
-	view = XMMatrixLookAtLH(cameraPosition, cameraTarget, cameraUpVector);
-
-    finalMatrix =  matRotateY * view * projection;
-	
-	// Transpose to get to RH
-	finalMatrix = XMMatrixTranspose(finalMatrix);
-
-	// Update constant buffer with the new matrix
-	gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &finalMatrix, 0, 0);
-
 
 	// draw the vertex buffer to the back buffer
 	gDeviceContext->Draw(4, 0); // Draw cube one
-
-	//XMMATRIX mTranslate = XMMatrixTranslation(-2.0f, 0.0, -6.0f);
-
-	//finalMatrix = matRotateZ * mTranslate * matRotateY * view * projection;
-
-	//// Transpose to get to RH
-	//finalMatrix = XMMatrixTranspose(finalMatrix);
-
-	//// Update constant buffer with the new matrix
-	//gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &finalMatrix, 0, 0);
-
-	//// draw the vertex buffer to the back buffer
-	//gDeviceContext->DrawIndexed(36, 0, 0); // Draw cube two
 
 	// Swap the buffers
 	gSwapChain->Present(0, 0);

@@ -1,4 +1,4 @@
-﻿Build started 2015-12-13 20:58:40.
+﻿Build started 2015-12-15 20:35:52.
      1>Project "C:\Users\nollkoll\Documents\Visual Studio 2015\Projects\Triangles\Demo.vcxproj" on node 2 (Build target(s)).
      1>C:\Program Files (x86)\MSBuild\Microsoft.Cpp\v4.0\V140\Microsoft.CppBuild.targets(392,5): warning MSB8028: The intermediate directory (Debug\) contains files shared from another project (BasicWindow.vcxproj).  This can lead to incorrect clean and rebuild behavior.
      1>FxCompile:
@@ -10,4 +10,4 @@
 
 Build succeeded.
 
-Time Elapsed 00:00:00.07
+Time Elapsed 00:00:00.06
