@@ -65,9 +65,8 @@ struct constantbuffer
 {
 	XMMATRIX Final; // 4x4x4 = 64
 	XMMATRIX World; // 4x4x4 = 64
-	XMVECTOR DiffuseVector; // 3x4 = 12
-	XMVECTOR DiffuseColor; // 3x4  = 12
-	XMVECTOR AmbientColor; // 3x4 = 12, tot = 100 bytes
+	XMMATRIX View;
+	XMMATRIX projection;
 };
 
 float ConvertToRadians(float angle)
@@ -125,9 +124,10 @@ void SetViewPortAndDepthBuffer()
 
 void CreateShaders()
 {
+	HRESULT hr;
 	ID3DBlob* pVS = nullptr, *vError;
 
-	D3DCompileFromFile(
+	hr = D3DCompileFromFile(
 		L"Vertex.hlsl", // filename
 		nullptr,		// optional macros
 		nullptr,		// optional include files
@@ -161,15 +161,21 @@ void CreateShaders()
 		&pError		// pointer for Error Blob messages.
 		);
 
-	if(pError)
-		MessageBox(NULL, L"The Pixel shader failed to compile.", L"Error", MB_OK);
+	if (FAILED(hr) || pError)
+	{
+		MessageBox(NULL, L"The geometry shader failed to compile.", L"Error", MB_OK);
+		if (pError)
+		{
+			OutputDebugStringA(static_cast<char*>(pError->GetBufferPointer()));
+		}
+	}
 
 	gDevice->CreatePixelShader(pPS->GetBufferPointer(), pPS->GetBufferSize(), nullptr, &gPixelShader);
 	gDeviceContext->PSSetShader(gPixelShader, 0, 0);
 
 	ID3DBlob* pGS = nullptr, *gError;
 
-	D3DCompileFromFile(
+	hr = D3DCompileFromFile(
 		L"GeometryShader.hlsl", // filename
 		nullptr,		// optional macros
 		nullptr,		// optional include files
@@ -181,8 +187,14 @@ void CreateShaders()
 		&gError		// pointer for Error Blob messages.
 		);
 
-	if (gError)
+	if (FAILED(hr) || gError)
+	{
 		MessageBox(NULL, L"The geometry shader failed to compile.", L"Error", MB_OK);
+		if (gError)
+		{
+			OutputDebugStringA(static_cast<char*>(gError->GetBufferPointer()));
+		}
+	}
 
 	gDevice->CreateGeometryShader(pGS->GetBufferPointer(), pGS->GetBufferSize(), nullptr, &gGeometryShader);
 	gDeviceContext->GSSetShader(gGeometryShader, 0, 0);
@@ -190,8 +202,8 @@ void CreateShaders()
 	// Input layout object
 	D3D11_INPUT_ELEMENT_DESC ied[] =
 	{ 
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
 	gDevice->CreateInputLayout(ied, ARRAYSIZE(ied), pVS->GetBufferPointer(), pVS->GetBufferSize(), &gVertexLayout);
@@ -234,7 +246,7 @@ void CreateTriangleData()
 	ZeroMemory(&cbdesc, sizeof(cbdesc));
 
 	cbdesc.Usage = D3D11_USAGE_DEFAULT;
-	cbdesc.ByteWidth = 176;
+	cbdesc.ByteWidth = 256;
 	cbdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
 	hr = gDevice->CreateBuffer(&cbdesc, NULL, &gCBuffer);
@@ -288,7 +300,6 @@ void Render()
 	static float deltatime;
 
 	Matrix matRotateY;
-	Matrix matRotateZ;
 	Matrix projection;
 	Matrix view;
 	Matrix finalMatrix;
@@ -303,7 +314,6 @@ void Render()
 
 	// Create world matrix, projection and view / camera for the first cube
 	matRotateY = XMMatrixRotationY(rads);
-	/*matRotateZ = XMMatrixRotationZ(rads);*/
 	projection = XMMatrixPerspectiveFovLH(PI*0.45f, 1.33f, 0.5f, 20.0f);
 	view = XMMatrixLookAtLH(cameraPosition, cameraTarget, cameraUpVector);
 
@@ -314,11 +324,10 @@ void Render()
 
 	// Create matrices for lights
 	constantbuffer gConstantBuffer;
-	gConstantBuffer.DiffuseVector = XMVectorSet(1.0f, 1.0f, 1.0f, 0.0f);
-	gConstantBuffer.DiffuseColor = XMVectorSet(0.5f, 0.5f, 0.5f, 1.0f);
-	gConstantBuffer.AmbientColor = XMVectorSet(0.2f, 0.2f, 0.2f, 1.0f);
 	gConstantBuffer.World = matRotateY;
 	gConstantBuffer.Final = finalMatrix;
+	gConstantBuffer.View = view;
+	gConstantBuffer.projection = projection;
 
 	// Update constant buffer with the new matrix
 	gDeviceContext->UpdateSubresource(gCBuffer, 0, 0, &gConstantBuffer, 0, 0);
